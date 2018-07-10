@@ -4,11 +4,11 @@ from email.mime.text import MIMEText
 from fetchWeather import fetchWeather
 
 # basic set up
-fromAdd = input('From which 163 mail account: ') # from which email address
-toAdd = input('To: ') # to which email address
+fromAdd = "clr_paradise@163.com" # from which email address
+toAdd = "echo333cheng@gmail.com" # to which email address
 host = 'smtp.163.com' # email host, need to replace
-username = input('Email account: ') # from which email address
-password = input('Password: ') # type in password to log in the account
+username = fromAdd # from which email address
+password = input('Enter password:') # type in password to log in the account
 postfix = '163.com' # need to replace
 
 # a function to send emails
