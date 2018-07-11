@@ -5,59 +5,60 @@ import psycopg2
 from config import config
 
 def fetch_data():
-    location_list = ['London', 'Santorini', 'Santiago', 'San Francisco', 'Mexico City', 'Hong Kong']
+    location_list = ['Tokyo', 'London', 'Paris', 'San Diego', 'San Francisco', 'Mexico City', 'Hong Kong', 'Los Angeles']
     location_id_list = []
 
-    print('querying location ids')
+    print('Retrieving data from Yahoo!...')
     # query location id with location name
-    for location in location_list:
-        query_id_url = 'https://www.metaweather.com/api/location/search/?query=%s' %(i)
-        ids = requests.get(query_id_url).json()
-        location_id_list.append(ids[0]['woeid'])
-    print('location ids retrieved')
+    for city in location_list:
+        search_text = "select item.condition from weather.forecast where woeid in (select woeid from geo.places(1) where text='" + city + "') and u='c'"
+        url = "https://query.yahooapis.com/v1/public/yql?q=" + search_text + "&format=json"
+        data = requests.get(url).json()
+    print('Success!')
     
     # record ids and apt_long in a .txt file
-    write_into('Users/zihuizheng/Desktop/weather_analysis/location_id_log.txt', ids)
+    write_into('Users/zihuizheng/Desktop/weather_analysis/yahoo_weather_retrieved.json', data)
 
-    # request data with location id
-    print('start fetching data')
-    for id in location_id_list:
-        url = 'https://www.metaweather.com/api/location/%s' % (id)
-        data = requests.get(url).json()
-        weather = data['consolidated_weather']
-        create_date = weather[0]['created'][:10]
-        applicable_date = [record['applicable_date'] for record in weather]
-        weather_predict = [record['weather_state_name'] for record in weather]
-        min_temperature = [str(record['min_temp'])[:4] for record in weather]
-        max_temperature = [str(record['max_temp'])[:4] for record in weather]
-        air_pressure = [str(record['air_pressure'])[:7] for record in weather]
-        humidity = [str(record['humidity']) for record in weather]
-    print('fetching data success')
-    return create_date, applicable_date, weather_predict, min_temperature, max_temperature, air_pressure, humidity
+    # extracting data needed
+    print('Extracting data...')
+    create_date = data['query']['created']
+    humidity = data['query']['results']['channel']['atmosphere']['humidity']
+    air_pressure = data['query']['results']['channel']['atmosphere']['pressure']
+    sun_rise = data['query']['results']['channel']['astronomy']['sunrise']
+    sun_set = data['query']['results']['channel']['astronomy']['sunset']
+    weather_txt = data['query']['results']['channel']['item']['text']
+    min_temp = data['query']['results']['channel']['item']['forecast'][0]['low']
+    max_temp = data['query']['results']['channel']['item']['forecast'][0]['high']
+
+    print('Success!')
+    return create_date, humidity, air_pressure, sun_rise, sun_set, weather_txt, min_temp, max_temp
 
 
 def write_into(path, content):
     if os.path.isfile(path):
         with open(path, 'a+') as fh:
             fh.write(content)
+            print("Updated 'yahoo_weather_retrieved.json'")
     else:
         with open(path, 'w+') as fh:
             fh.write(content)
-    print('location ids and apt_long info recorded in location_id_log.txt')
+            print("Created 'yahoo_weather_retrieved.json'")
 
 
 def create_table():
+    # first check if table already exist. if no, create one; if yes, update it
     commands = ('''
-                create table weather_analysis if not exists(
-                    ids integer serial unique,
+                create table if not exists weather_analysis(
+                    id serial,
                     create_date date,
-                    applicable_date date,
-                    weather_predict varchar(30),
-                    min_temperature float(3)
-                    max_temperature float(3),
+                    humudity float(2),
                     air_pressure float(3),
-                    humidity float(3)
-                )''')
+                    sun_rise varchar(20),
+                    sun_set varchar(20),
+                    weather_txt varchar(20),
+                    low_temp float(2),
+                    high_temp float(2)
+                );''')
     conn = None
     try:
 
@@ -84,22 +85,24 @@ def insert_data():
     conn = psycopg2.connect(**params)
     cur = conn.cursor()
 
-    create_date, applicable_date, weather_predit, min_temperature, max_temperature, air_pressure, humidity = fetch_data()
+    create_date, humidity, air_pressure, sun_rise, sun_set, weather_txt, min_temp, max_temp = fetch_data()
     while create_date:
-        create_d = create_date.pop()
-        applicable_d = applicable_date.pop()
-        weather_p = weather_predit.pop()
-        min_temp = min_temperature.pop()
-        max_temp = max_temperature.pop()
-        air_p = air_pressure.pop()
-        humid = humidity.pop()
+        create_date = create_date.pop(0)
+        humidity = humidity.pop(0)
+        air_pressure = air_pressure.pop(0)
+        sun_rise = sun_rise.pop(0)
+        sun_set = sun_set.pop(0)
+        weather_txt = weather_txt.pop(0)
+        min_temp = min_temp.pop(0)
+        max_temp = max_temp.pop(0)
 
-        sql = '''INSERT INTO weather_analysis (create_date, applicable_date, weather_predict, min_temperature, max_temperature, air_pressure, humidity) 
-        values (%, %, %, %, %, %, %);'''
+        sql = '''INSERT INTO weather_analysis (id, create_date, humidity, air_pressure, sun_rise, sun_set, weather_text, low_temp, high_temp) 
+        values (1, %, %, %, %, %, %, %, %);'''
 
-        cur.execute(sql, (create_d, applicable_d, weather_p, min_temp, max_temp, air_p, humid))
+        cur.execute(sql, (create_date, humidity, air_pressure, sun_rise, sun_set, weather_txt, min_temp, max_temp))
         conn.commit()
     cur.close()
+
 
 if __name__ == '__main__':
     create_table()
