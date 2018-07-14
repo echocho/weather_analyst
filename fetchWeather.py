@@ -4,22 +4,20 @@ import psycopg2
 
 from config import config
 
-def fetch_data():
-    # location_list = ['Tokyo', 'London', 'Paris', 'San Diego', 'San Francisco', 'Mexico City', 'Hong Kong', 'Los Angeles']
-    location_list = ['Tokyo']
+def fetch_data(city):
     print('Retrieving data from Yahoo!...')
-    # query location id with location name
-    for city in location_list:
-        search_text = "select * from weather.forecast where woeid in (select woeid from geo.places(1) where text='" + city + "') and u='c'"
-        url = "https://query.yahooapis.com/v1/public/yql?q=" + search_text + "&format=json"
-        data = requests.get(url).json()
+
+    search_text = "select * from weather.forecast where woeid in (select woeid from geo.places(1) where text='" + city + "') and u='c'"
+    url = "https://query.yahooapis.com/v1/public/yql?q=" + search_text + "&format=json"
+    data = requests.get(url).json()
     print('Success!')
     
     # record ids and apt_long in a .txt file
-    write_into('/Users/zihuizheng/Desktop/weather_analysis/yahoo_weather_retrieved.json', data)
+    write_into('yahoo_weather_retrieved.json', data)
 
     # extracting data needed
     print('Extracting data...')
+
     create_date = [data['query']['created']]
     humidity = [data['query']['results']['channel']['atmosphere']['humidity']]
     air_pressure = [data['query']['results']['channel']['atmosphere']['pressure']]
@@ -49,6 +47,7 @@ def create_table():
     commands = ('''
                 create table if not exists weather_analysis(
                     id serial,
+                    city varchar(15),
                     create_date varchar(40),
                     humidity integer,
                     air_pressure float(2),
@@ -78,33 +77,36 @@ def create_table():
             conn.close()
 
 
-def insert_data():
+def insert_data(location_list):
     conn = None
     params = config()
     conn = psycopg2.connect(**params)
     cur = conn.cursor()
 
-    create_date, humidity, air_pressure, sun_rise, sun_set, weather_text, min_temp, max_temp = fetch_data()
-    while create_date:
-        create_d = create_date.pop(0)
-        humid = humidity.pop(0)
-        pressure = air_pressure.pop(0)
-        sunrise = sun_rise.pop(0)
-        sunset = sun_set.pop(0)
-        weather = weather_text.pop(0)
-        mintemp = min_temp.pop(0)
-        maxtemp = max_temp.pop(0)
+    for place in location_list:
+        create_date, humidity, air_pressure, sun_rise, sun_set, weather_text, min_temp, max_temp = fetch_data(place)
 
-        sql = '''INSERT INTO weather_analysis (create_date, humidity, air_pressure, sun_rise, sun_set, weather_text, low_temp, high_temp) 
-        values (%s, %s, %s, %s, %s, %s, %s, %s);'''
+        while create_date:
+            create_d = create_date.pop(0)
+            humid = humidity.pop(0)
+            pressure = air_pressure.pop(0)
+            sunrise = sun_rise.pop(0)
+            sunset = sun_set.pop(0)
+            weather = weather_text.pop(0)
+            mintemp = min_temp.pop(0)
+            maxtemp = max_temp.pop(0)
 
-        cur.execute(sql, (create_d, humid, pressure, sunrise, sunset, weather, mintemp, maxtemp))
-        conn.commit()
+            sql = '''INSERT INTO weather_analysis (city, create_date, humidity, air_pressure, sun_rise, sun_set, weather_text, low_temp, high_temp) 
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s);'''
+
+            cur.execute(sql, (place, create_d, humid, pressure, sunrise, sunset, weather, mintemp, maxtemp))
+            conn.commit()
     cur.close()
 
 
 if __name__ == '__main__':
+    location_list = ['Tokyo', 'London', 'Paris', 'San Diego', 'San Francisco', 'Mexico City', 'Shanghai', 'Los Angeles']
     create_table()
-    insert_data()
+    insert_data(location_list)
 
 
